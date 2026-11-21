@@ -1,11 +1,11 @@
 ---
 name: ui-color-contrast-balance
-description: Design and audit any UI (web, mobile, dashboard, landing page, design system, Figma, slides) with the 60-30-10 color ratio, WCAG 2.2 AA and AAA contrast, and visual balance and composition (hierarchy, grid, spacing, whitespace, focal point). Use this skill whenever the user mentions color palette, color scheme, 60-30-10, accent or CTA color, contrast ratio, WCAG, AA, AAA, accessibility, dark mode colors, "my UI looks off / unbalanced / cluttered / boring", visual hierarchy, layout balance, composition, design tokens, or asks to review, critique, fix or generate any interface, even if they never say "accessibility". Ships a verified contrast-checker script, ready palettes that already pass AA/AAA, and a 100-point audit rubric.
+description: Design, audit and automatically test any UI (web, mobile, dashboard, landing page, design system, Figma, slides) for color, contrast and balance (60-30-10 ratio, WCAG 2.2 AA/AAA, hierarchy and composition). Ships automation for screenshot color analysis, Figma/DTCG/CSS token validation, live-browser contrast testing (Playwright or Playwright MCP), palette generation from one brand color and visual regression testing. Use whenever the user mentions color palette, color scheme, 60-30-10, accent or CTA color, contrast, WCAG, accessibility, dark mode, design tokens, Figma variables, "my UI looks off / unbalanced / cluttered", screenshot review, Playwright, visual regression, or asks to review, critique, fix or generate any interface, even if they never say "accessibility".
 ---
 
 # UI Color, Contrast & Balance
 
-One skill, three jobs: **(1) color ratio (60-30-10)**, **(2) contrast that passes WCAG AA/AAA**, **(3) visual balance & composition**. It works for any project, stack, brand, language, or platform. It does not pick a "style"; it makes whatever style you choose coherent, readable, and balanced.
+One skill, three jobs: **(1) color ratio (60-30-10)**, **(2) contrast that passes WCAG AA/AAA**, **(3) visual balance & composition**, plus a **six-tool automation toolkit** (screenshot analysis, token validation, live-browser testing, Playwright MCP, palette generation, visual regression) so results are measured, not guessed. It works for any project, stack, brand, language, or platform. It does not pick a "style"; it makes whatever style you choose coherent, readable, and balanced.
 
 Load extra files only when needed:
 
@@ -15,6 +15,9 @@ Load extra files only when needed:
 | Every WCAG success criterion that touches color/focus/target, edge cases, APCA note | `references/wcag-contrast.md` |
 | Hierarchy, visual weight, grid, spacing, type scale, focal-point rules | `references/visual-balance-composition.md` |
 | 100-point scoring rubric + pre-delivery checklist + report template | `references/audit-checklist.md` |
+| Which tool to run, recipes, CI snippets, automation limits | `references/automation-workflows.md` |
+| Claude drives a real browser (Playwright MCP): setup, audit recipe, theme switching | `references/playwright-mcp.md` |
+| Export Figma variables, token rules, role mapping, fixing token failures | `references/figma-token-validation.md` |
 | Which 20 GitHub repos informed this skill and what was kept | `references/research-sources.md` |
 
 ---
@@ -24,7 +27,7 @@ Load extra files only when needed:
 1. **Context (1 minute, don't over-ask).** Product type, audience, brand colors if any, light/dark/both, target level (default **AA**, go **AAA** for body text/health/finance/gov/education or when asked), platforms. Missing info: state an assumption in one line and continue.
 2. **Choose structure before color.** Decide the 3 roles (below), then the composition skeleton (focal point, hierarchy levels, grid).
 3. **Build tokens, not hex-in-components.** Every color is a named role token. Components only reference tokens.
-4. **Verify with numbers, not eyeballs.** Run `scripts/contrast_check.py` (see "Verify"). Never claim a pair passes without computing its ratio.
+4. **Verify with numbers, not eyeballs.** Run the right tool from section 4 (`contrast_check.py` for pairs, the toolkit for screenshots, tokens, live pages, palettes, regressions). Never claim a pair passes without computing its ratio.
 5. **Report in a table** with ratios and PASS/FAIL (format below). Fix failures before delivering.
 
 ---
@@ -148,6 +151,33 @@ If the script cannot run (no shell), compute luminance by hand with the formula 
 
 ---
 
+## 4b. Automation toolkit (use it whenever the input can be measured)
+
+Pick by input. Full recipes, CI and limits: `references/automation-workflows.md`.
+
+| Input | Tool | One-liner |
+|---|---|---|
+| **1. Screenshot / image** | `scripts/screenshot_analyze.py` | `python3 scripts/screenshot_analyze.py shot.png [--region x,y,w,h] [--palette-json p.json]` palette + area share, 60-30-10 estimate, real contrast of touching colors, inferred roles, color-blind collapse pairs |
+| **2. Figma variables / tokens / CSS theme** | `scripts/figma_token_validate.py` | `python3 scripts/figma_token_validate.py vars.json [--level AAA] [--map role=path] [--strict]` per-mode contrast, aliases, light/dark parity, hygiene. Export steps: `references/figma-token-validation.md` |
+| **3. Live page in a browser** | `scripts/browser_contrast_audit.js` / `scripts/browser_audit.py` | `python3 scripts/browser_audit.py URL --schemes light,dark --viewports 390x844,1440x900 --screenshots` effective fg/bg incl. alpha, opacity, gradients; placeholders, field borders, link cues, focus, target size, 320px reflow |
+| **4. Playwright MCP** (Claude controls the browser) | `references/playwright-mcp.md` | `browser_navigate` -> `browser_resize` -> `browser_evaluate` with the contents of `browser_contrast_audit.js` -> `browser_take_screenshot`. Works with no shell |
+| **5. Brand color -> full palette** | `scripts/palette_generate.py` | `python3 scripts/palette_generate.py "#2563EB" --level AA --format css|tailwind|dtcg|json -o out` tinted neutrals, 50-950 scales, light+dark roles solved against real backgrounds, chart colors, self-verified |
+| **6. Did the UI change / break?** | `scripts/visual_regression.py` | `python3 scripts/visual_regression.py compare baseline/ current/ --out diff/ [--ignore-aa] [--ignore-region x,y,w,h]` pixel diff, regions, **color drift**, diff images; `approve` updates baselines |
+
+Rules for using the toolkit:
+
+1. **Run, then read the numbers.** Quote ratios, hex values, counts and selectors from tool output in the report. Say which tool and mode produced them.
+2. **Cover themes and states.** Audit light and dark, at 390 / 1440 (and 320 for reflow), and open menus, modals, errors, hover/focus states. Most failures live there.
+3. **`uncertain` is not a pass.** Text on photos/video/blend modes must be verified from a screenshot or by eye with a scrim rule.
+4. **Screenshot role inference is a heuristic.** Show the inferred roles and confirm them before running `check` on them.
+5. **Generated palettes are starting points that are guaranteed to pass the listed pairs**, not a brand. Keep the user's brand color as fill when it passes (the generator does), derive `accent-text` when it does not.
+6. **No shell or browser?** State it, compute by hand with the WCAG formula, and mark values as manually calculated. Offer the exact commands for the user to run.
+7. **Network and install:** tools are stdlib except Pillow (1, 6) and Playwright (3). Install steps: `references/automation-workflows.md` section 7.
+
+Exit codes: all scripts exit 1 on failure, so they can gate CI.
+
+---
+
 ## 5. Output formats
 
 **When generating a design/palette**, always return:
@@ -165,6 +195,8 @@ If the script cannot run (no shell), compute luminance by hand with the formula 
 4. A 3-line **composition note**: where the focal point is, where the accent lands, how the layout balances.
 
 **When auditing existing UI**, use the report template in `references/audit-checklist.md` (score out of 100, top-5 fixes with exact values, before/after ratios). Fixes must be concrete ("change `#9CA3AF` → `#6B7280`, 2.5:1 → 4.8:1"), never "improve contrast".
+
+**Automation results:** add a short "Measured with" line (tool, mode, viewport, level) under the role table, then the failing groups with count, ratio and exact fix.
 
 **Figma:** express colors as variables with semantic names (`color/bg/default`, `color/accent/default`, `color/text/on-accent`) and a light/dark mode pair; bind fills to variables, never raw hex.
 
